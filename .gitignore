@@ -1,0 +1,4 @@
+tags
+Session.vim
+*.pyc
+__pycache__/
