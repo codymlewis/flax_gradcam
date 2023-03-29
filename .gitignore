@@ -2,3 +2,6 @@ tags
 Session.vim
 *.pyc
 __pycache__/
+build/
+dist/
+*.egg-info

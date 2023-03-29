@@ -1,13 +1,15 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import jax
-import flax.linen as nn
 import jax.numpy as jnp
-import einops
-import datasets
+import flax.linen as nn
 import optax
 import jaxopt
+import datasets
+import einops
 from sklearn import metrics
 from tqdm import trange
+import fgradcam
 
 
 def ce_loss(model):
@@ -62,25 +64,6 @@ def load_mnist():
     return ds
 
 
-class LeNet(nn.Module):
-    @nn.compact
-    def __call__(self, x):
-        x = nn.Conv(6, (5, 5))(x)
-        x = nn.relu(x)
-        x = nn.avg_pool(x, (2, 2))
-        x = nn.Conv(6, (5, 5))(x)
-        x = nn.relu(x)
-        x = nn.avg_pool(x, (2, 2))
-        x = einops.rearrange(x, "b h w c -> b (h w c)")
-        x = nn.Dense(120)(x)
-        x = nn.relu(x)
-        x = nn.Dense(84)(x)
-        x = nn.relu(x)
-        x = nn.Dense(10)(x)
-        x = nn.softmax(x)
-        return x
-
-
 class CNN(nn.Module):
     @nn.compact
     def __call__(self, x):
@@ -90,36 +73,11 @@ class CNN(nn.Module):
         x = nn.relu(x)
         x = nn.Conv(features=16, kernel_size=(3, 3), padding="SAME", name="CONV3")(x)
         x = nn.relu(x)
-        x = observe(self, x)
+        x = fgradcam.observe(self, x)
         x = einops.rearrange(x, "b h w c -> b (h w c)")
         x = nn.Dense(10)(x)
         x = nn.softmax(x)
         return x
-
-
-def observe(self, x):
-    x = self.perturb('gradcam_perturb', x)
-    self.sow('intermediates', 'gradcam_sow', x)
-    return x
-
-
-def GradCAM(model, variables, X):
-    _, state = model.apply(variables, X, mutable=["intermediates"])
-    intermediates = state['intermediates']['gradcam_sow'][0]
-
-    def _apply(params, perturbations, X):
-        preds = model.apply({'params': params, 'perturbations': perturbations}, X)
-        return preds.max()
-    params, perturbations = variables['params'], variables['perturbations']
-    grads = jax.grad(_apply, argnums=1)(params, perturbations, X)
-    grads = grads['gradcam_perturb']
-
-    pooled_grads = einops.reduce(grads, 'b h w c -> c', jnp.mean)
-    conv_output = intermediates.squeeze()
-    conv_output = conv_output[:, :] * pooled_grads
-    heatmap = conv_output.mean(axis=-1)
-    heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min())
-    return heatmap
 
 
 if __name__ == "__main__":
@@ -127,17 +85,23 @@ if __name__ == "__main__":
     X, Y = dataset['train']['X'], dataset['train']['Y']
     model = CNN()
     params = model.init(jax.random.PRNGKey(42), X[:1])
-    solver = jaxopt.OptaxSolver(ce_loss(model), optax.sgd(0.1), maxiter=3000)
-    state = solver.init_state(params)
-    step = jax.jit(solver.update)
-#    rng = np.random.default_rng()
-#    for i in (pbar := trange(solver.maxiter)):
-#        idx = rng.choice(len(Y), size=128, replace=False)
-#        params, state = step(params=params, state=state, X=X[idx], Y=Y[idx])
-#        pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
-#    final_acc = accuracy(model, params, dataset['test']['X'], dataset['test']['Y'])
-#    print(f"Final accuracy: {final_acc:.3%}")
-    heatmap = GradCAM(model, params, X[:1])
-    import matplotlib.pyplot as plt
-    plt.imshow(heatmap, cmap="Reds")
+
+    # solver = jaxopt.OptaxSolver(ce_loss(model), optax.sgd(0.1), maxiter=3000)
+    # state = solver.init_state(params)
+    # step = jax.jit(solver.update)
+    # rng = np.random.default_rng()
+    # for i in (pbar := trange(solver.maxiter)):
+    #     idx = rng.choice(len(Y), size=128, replace=False)
+    #     params, state = step(params=params, state=state, X=X[idx], Y=Y[idx])
+    #     pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
+    # final_acc = accuracy(model, params, dataset['test']['X'], dataset['test']['Y'])
+    # print(f"Final accuracy: {final_acc:.3%}")
+
+    batch_size = 25
+    heatmap = fgradcam.compute(model, params, X[:batch_size])
+    fig, axes = plt.subplots(nrows=round(batch_size**0.5), ncols=round(batch_size**0.5))
+    axes = axes.flatten()
+    for i, ax in enumerate(axes):
+        fgradcam.plot(X[i], heatmap[i], ax=ax)
+    plt.tight_layout()
     plt.show()
