@@ -64,6 +64,7 @@ def plot(
 
     if ax is None:
         plt.imshow(x)
+        plt.axis('off')
     else:
         ax.imshow(x)
-    ax.axis('off')
+        ax.axis('off')
