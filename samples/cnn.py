@@ -67,11 +67,11 @@ def load_mnist():
 class CNN(nn.Module):
     @nn.compact
     def __call__(self, x):
-        x = nn.Conv(features=48, kernel_size=(3, 3), padding="SAME", name="CONV1")(x)
+        x = nn.Conv(features=48, kernel_size=(3, 3), padding="SAME")(x)
         x = nn.relu(x)
-        x = nn.Conv(features=32, kernel_size=(3, 3), padding="SAME", name="CONV2")(x)
+        x = nn.Conv(features=32, kernel_size=(3, 3), padding="SAME")(x)
         x = nn.relu(x)
-        x = nn.Conv(features=16, kernel_size=(3, 3), padding="SAME", name="CONV3")(x)
+        x = nn.Conv(features=16, kernel_size=(3, 3), padding="SAME")(x)
         x = nn.relu(x)
         x = fgradcam.observe(self, x)
         x = einops.rearrange(x, "b h w c -> b (h w c)")
@@ -86,16 +86,16 @@ if __name__ == "__main__":
     model = CNN()
     params = model.init(jax.random.PRNGKey(42), X[:1])
 
-    # solver = jaxopt.OptaxSolver(ce_loss(model), optax.sgd(0.1), maxiter=3000)
-    # state = solver.init_state(params)
-    # step = jax.jit(solver.update)
-    # rng = np.random.default_rng()
-    # for i in (pbar := trange(solver.maxiter)):
-    #     idx = rng.choice(len(Y), size=128, replace=False)
-    #     params, state = step(params=params, state=state, X=X[idx], Y=Y[idx])
-    #     pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
-    # final_acc = accuracy(model, params, dataset['test']['X'], dataset['test']['Y'])
-    # print(f"Final accuracy: {final_acc:.3%}")
+    solver = jaxopt.OptaxSolver(ce_loss(model), optax.sgd(0.1), maxiter=3000)
+    state = solver.init_state(params)
+    step = jax.jit(solver.update)
+    rng = np.random.default_rng()
+    for i in (pbar := trange(solver.maxiter)):
+        idx = rng.choice(len(Y), size=128, replace=False)
+        params, state = step(params=params, state=state, X=X[idx], Y=Y[idx])
+        pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
+    final_acc = accuracy(model, params, dataset['test']['X'], dataset['test']['Y'])
+    print(f"Final accuracy: {final_acc:.3%}")
 
     batch_size = 25
     heatmap = fgradcam.compute(model, params, X[:batch_size])

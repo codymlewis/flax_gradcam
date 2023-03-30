@@ -1,5 +1,6 @@
 from typing import Any, Optional
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import jax
 import flax.linen as nn
@@ -57,10 +58,8 @@ def plot(
     if (channels_last and x.shape[-1] < 3) or (not channels_last and x.shape[0] < 3):
         x = einops.repeat(x, "h w 1 -> h w 3")
 
-    if channels_last:
-        x[:, :, 0] = jnp.clip(x[:, :, 0] + heatmap, 0, data_range)
-    else:
-        x[0, :, :] = jnp.clip(x[0, :, :] + heatmap, 0, data_range)
+    heatmap = jnp.delete(mpl.colormaps['jet'](heatmap), 3, -1)
+    x = 0.5 * heatmap + 0.5 * x
 
     if ax is None:
         plt.imshow(x)
