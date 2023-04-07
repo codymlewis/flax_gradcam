@@ -1,0 +1,5 @@
+jaxopt
+optax
+flax
+tqdm
+datasets
