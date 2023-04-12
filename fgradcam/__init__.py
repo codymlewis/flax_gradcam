@@ -56,10 +56,11 @@ def compute(model: nn.Module, variables: PyTree, X: jax.Array) -> jax.Array:
 
     pooled_grads = einops.reduce(grads, 'b h w c -> b c', jnp.mean)
     conv_output = jnp.einsum('bhwc,bc->bhwc', intermediates, pooled_grads)
-    heatmap = conv_output.mean(axis=-1)
-    heatmap_mins = einops.reduce(heatmap, 'b h w -> b', jnp.min)
+    heatmap = conv_output.mean(axis=-1)  # Average the channels of the heatmap
+    heatmap = nn.relu(heatmap)
+    # Finally, we normalize the heatmap into the [0, 1] range
     heatmap_maxs = einops.reduce(heatmap, 'b h w -> b', jnp.max)
-    heatmap = ((heatmap.T - heatmap_mins) / (heatmap_maxs - heatmap_mins)).T
+    heatmap = (heatmap.T / heatmap_maxs).T
     return heatmap
 
 
