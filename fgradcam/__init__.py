@@ -59,9 +59,8 @@ def compute(model: nn.Module, variables: PyTree, X: jax.Array) -> jax.Array:
     heatmap = conv_output.mean(axis=-1)  # Average the channels of the heatmap
     heatmap = nn.relu(heatmap)
     # Finally, we normalize the heatmap into the [0, 1] range
-    heatmap_mins = einops.reduce(heatmap, 'b h w -> b', jnp.min)
     heatmap_maxs = einops.reduce(heatmap, 'b h w -> b', jnp.max)
-    heatmap = ((heatmap.T - heatmap_mins) / (heatmap_maxs - heatmap_mins)).T
+    heatmap = (heatmap.T / heatmap_maxs).T
     return heatmap
 
 

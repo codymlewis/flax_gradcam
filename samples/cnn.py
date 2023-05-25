@@ -98,15 +98,15 @@ if __name__ == "__main__":
     rng = np.random.default_rng()
     for i in (pbar := trange(solver.maxiter)):
         idx = rng.choice(len(Y), size=128, replace=False)
-        params, state = step(params=variables, state=state, X=X[idx], Y=Y[idx])
+        variables, state = step(params=variables, state=state, X=X[idx], Y=Y[idx])
         pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
-    final_acc = accuracy(model, params, dataset['test']['X'], dataset['test']['Y'])
+    final_acc = accuracy(model, variables, dataset['test']['X'], dataset['test']['Y'])
     print(f"Final accuracy: {final_acc:.3%}")
 
     # Compute and plot the Grad-CAM
     batch_size = 25
     print("Computing Grad-CAM heatmap...")
-    heatmap = fgradcam.compute(model, params, X[:batch_size])
+    heatmap = fgradcam.compute(model, variables, X[:batch_size])
     print("Done. Plotting the results...")
     fig, axes = plt.subplots(nrows=round(batch_size**0.5), ncols=round(batch_size**0.5))
     axes = axes.flatten()
