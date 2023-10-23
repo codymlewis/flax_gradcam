@@ -37,8 +37,7 @@ def compute(train_state: TrainState, X: jax.Array) -> jax.Array:
     values are in the range [0, 1] where 0 shows least contribution and 1 shows most.
 
     Arguments:
-    - model: Flax module that applies the neural network model
-    - variables: Parameters and internal statistics of the model in a PyTree structure
+    - train_state: A flax trainstate dataclass storing the model apply function and its parameters
     - X: Samples to compute the Grad-CAM of
     """
     _, state = train_state.apply_fn(train_state.params, X, mutable=["intermediates"])
