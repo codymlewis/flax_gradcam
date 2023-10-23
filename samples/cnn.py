@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     # Train the model
     rng = np.random.default_rng()
-    for _ in (pbar := trange(1)):
+    for _ in (pbar := trange(3)):
         idxs = np.array_split(rng.permutation(len(dataset['train']['Y'])), math.ceil(len(dataset['train']['Y']) / 128))
         loss_sum = 0.0
         for idx in idxs:
