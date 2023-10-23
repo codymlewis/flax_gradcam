@@ -1,10 +1,11 @@
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
+from flax.training.train_state import TrainState
 import optax
-import jaxopt
 import datasets
 import einops
 from sklearn import metrics
@@ -12,17 +13,19 @@ from tqdm import trange
 import fgradcam
 
 
-def ce_loss(model):
-    "A simple cross-entropy loss function"
-    @jax.jit
-    def _loss(params, X, Y):
-        logits = jnp.clip(model.apply(params, X), 1e-15, 1 - 1e-15)
+@jax.jit
+def update_step(train_state, X, Y):
+    def loss_fn(params):
+        logits = jnp.clip(train_state.apply_fn(params, X), 1e-15, 1 - 1e-15)
         one_hot = jax.nn.one_hot(Y, logits.shape[-1])
         return -jnp.mean(jnp.einsum("bl,bl -> b", one_hot, jnp.log(logits)))
-    return _loss
+
+    loss, grads = jax.value_and_grad(loss_fn)(train_state.params)
+    train_state = train_state.apply_gradients(grads=grads)
+    return loss, train_state
 
 
-def accuracy(model, variables, X, Y, batch_size=1000):
+def accuracy(train_state, X, Y, batch_size=1000):
     """
     Calculate the accuracy of the model across the given dataset
 
@@ -35,7 +38,8 @@ def accuracy(model, variables, X, Y, batch_size=1000):
     """
     @jax.jit
     def _apply(batch_X):
-        return jnp.argmax(model.apply(variables, batch_X), axis=-1)
+        return jnp.argmax(train_state.apply_fn(train_state.params, batch_X), axis=-1)
+
     preds, Ys = [], []
     for i in range(0, len(Y), batch_size):
         i_end = min(i + batch_size, len(Y))
@@ -64,7 +68,7 @@ def load_mnist():
     ds['train'] = ds['train'].cast(features)
     ds['test'] = ds['test'].cast(features)
     ds.set_format('numpy')
-    return ds
+    return {t: {"X": ds[t]['X'], "Y": ds[t]['Y']} for t in ['train', 'test']}
 
 
 class CNN(nn.Module):
@@ -87,30 +91,32 @@ class CNN(nn.Module):
 if __name__ == "__main__":
     # Initialize the model and dataset
     dataset = load_mnist()
-    X, Y = dataset['train']['X'], dataset['train']['Y']
     model = CNN()
-    variables = model.init(jax.random.PRNGKey(42), X[:1])
+    train_state = TrainState.create(
+        apply_fn=model.apply,
+        params=model.init(jax.random.PRNGKey(42), dataset['train']['X'][:1]),
+        tx=optax.sgd(0.1),
+    )
 
     # Train the model
-    solver = jaxopt.OptaxSolver(ce_loss(model), optax.sgd(0.1), maxiter=3000)
-    state = solver.init_state(variables)
-    step = jax.jit(solver.update)
     rng = np.random.default_rng()
-    for i in (pbar := trange(solver.maxiter)):
-        idx = rng.choice(len(Y), size=128, replace=False)
-        variables, state = step(params=variables, state=state, X=X[idx], Y=Y[idx])
-        pbar.set_postfix_str(f"LOSS: {state.value:.3f}")
-    final_acc = accuracy(model, variables, dataset['test']['X'], dataset['test']['Y'])
-    print(f"Final accuracy: {final_acc:.3%}")
+    for _ in (pbar := trange(1)):
+        idxs = np.array_split(rng.permutation(len(dataset['train']['Y'])), math.ceil(len(dataset['train']['Y']) / 128))
+        loss_sum = 0.0
+        for idx in idxs:
+            loss, train_state = update_step(train_state, dataset['train']['X'][idx], dataset['train']['Y'][idx])
+            loss_sum += loss
+        pbar.set_postfix_str(f"LOSS: {loss_sum / len(idxs):.3f}")
+    print(f"Final accuracy: {accuracy(train_state, dataset['test']['X'], dataset['test']['Y']):.3%}")
 
     # Compute and plot the Grad-CAM
     batch_size = 25
     print("Computing Grad-CAM heatmap...")
-    heatmap = fgradcam.compute(model, variables, X[:batch_size])
+    heatmap = fgradcam.compute(train_state, dataset['test']['X'][:batch_size])
     print("Done. Plotting the results...")
     fig, axes = plt.subplots(nrows=round(batch_size**0.5), ncols=round(batch_size**0.5))
     axes = axes.flatten()
     for i, ax in enumerate(axes):
-        fgradcam.plot(X[i], heatmap[i], ax=ax)
+        fgradcam.plot(dataset['test']['X'][i], heatmap[i], ax=ax)
     plt.tight_layout()
     plt.show()

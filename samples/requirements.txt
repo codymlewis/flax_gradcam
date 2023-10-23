@@ -3,3 +3,4 @@ optax
 flax
 tqdm
 datasets
+scikit-learn

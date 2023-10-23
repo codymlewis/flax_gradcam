@@ -11,11 +11,9 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import jax
 import flax.linen as nn
+from flax.training.train_state import TrainState
 import jax.numpy as jnp
 import einops
-
-
-PyTree = Any
 
 
 def observe(module: nn.Module, x: jax.Array) -> jax.Array:
@@ -32,7 +30,7 @@ def observe(module: nn.Module, x: jax.Array) -> jax.Array:
     return x
 
 
-def compute(model: nn.Module, variables: PyTree, X: jax.Array) -> jax.Array:
+def compute(train_state: TrainState, X: jax.Array) -> jax.Array:
     """
     Compute the Grad-CAM heatmap for model with respect to the input samples X.
     Returns a heatmap of the shape of the input to the observe layer but without channels,
@@ -43,14 +41,14 @@ def compute(model: nn.Module, variables: PyTree, X: jax.Array) -> jax.Array:
     - variables: Parameters and internal statistics of the model in a PyTree structure
     - X: Samples to compute the Grad-CAM of
     """
-    _, state = model.apply(variables, X, mutable=["intermediates"])
+    _, state = train_state.apply_fn(train_state.params, X, mutable=["intermediates"])
     intermediates = state['intermediates']['gradcam_sow'][0]
 
     def _apply(params, perturbations, X):
-        preds = model.apply({'params': params, 'perturbations': perturbations}, X)
+        preds = train_state.apply_fn({'params': params, 'perturbations': perturbations}, X)
         return preds.max()
 
-    params, perturbations = variables['params'], variables['perturbations']
+    params, perturbations = train_state.params['params'], train_state.params['perturbations']
     grads = jax.grad(_apply, argnums=1)(params, perturbations, X)
     grads = grads['gradcam_perturb']
 
